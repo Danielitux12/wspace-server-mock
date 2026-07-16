@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model User {
@@ -25,11 +25,15 @@ model User {
 model Space {
   id           String        @id @default(uuid())
   name         String
+  type         String        // 👈 Agregado
   description  String
   city         String
-  address      String
-  pricePerHour Float         // Cambiado de Decimal a Float para compatibilidad con SQLite
+  neighborhood String        // 👈 Agregado (mapeado desde tu frontend)
+  address      String        // Mantener para compatibilidad
+  pricePerHour Float         
   capacity     Int
+  photos       String[]      // 👈 Agregado como array nativo de PostgreSQL
+  amenities    String[]      // 👈 Agregado como array nativo de PostgreSQL
   ownerId      String
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt

@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+
+  wspace_db:
+    image: postgres:15-alpine
+    container_name: wspace_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: wspace_secure_password_2026
+      POSTGRES_DB: wspace_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - wspace_network
+
+volumes:
+  postgres_data:
+
+networks:
+  wspace_network:
+    driver: bridge
