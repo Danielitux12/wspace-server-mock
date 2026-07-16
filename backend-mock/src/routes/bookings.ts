@@ -1,117 +1,152 @@
-/*
-  ARCHIVO: src/routes/bookings.ts
-*/
-
 import express from 'express';
-import { bookings, spaces, generateBookingId } from '../data/mockData.ts';
+import type { Request, Response, RequestHandler } from 'express';
+import prisma from '../config/db.ts';
 import { authMiddleware } from '../middleware/authMiddleware.ts';
 
 const router = express.Router();
 
-const GUEST_FEE_RATE = 0.12; 
-const HOST_FEE_RATE = 0.06;  
-const TAX_RATE = 0.19;       
-
-function calculateHoursBetween(startTime: string, endTime: string): number {
-  const [sh, sm] = startTime.split(':').map(Number);
-  const [eh, em] = endTime.split(':').map(Number);
-  return Math.max(0, ((eh * 60 + em) - (sh * 60 + sm)) / 60);
+function parseTimeToDate(dateStr: string, timeStr: string): Date {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  const baseDate = new Date(dateStr);
+  baseDate.setUTCHours(hours, minutes, 0, 0);
+  return baseDate;
 }
 
-// Se activa cuando un WSpacer solicita una reserva nueva
-router.post('/', authMiddleware as any, (req: express.Request, res: express.Response): any => {
+router.post('/', authMiddleware as any, (async (req: Request, res: Response) => {
   const { spaceId, date, startTime, endTime } = req.body;
 
-  const space = spaces.find((s: any) => s.id === spaceId);
-  if (!space) return res.status(404).json({ message: 'Espacio no encontrado' });
+  try {
+    const space = await prisma.space.findUnique({
+      where: { id: String(spaceId) }
+    });
 
-  const hours = calculateHoursBetween(startTime, endTime);
-  if (hours <= 0) return res.status(400).json({ message: 'El horario seleccionado no es válido' });
+    if (!space) {
+      return res.status(404).json({ message: 'Espacio no encontrado' });
+    }
 
-  const overlapping = bookings.find((b: any) =>
-    b.spaceId === spaceId &&
-    b.date === date &&
-    b.status !== 'rechazada' && b.status !== 'cancelada' &&
-    startTime < b.endTime && endTime > b.startTime
-  );
+    const startDateTime = parseTimeToDate(date, startTime);
+    const endDateTime = parseTimeToDate(date, endTime);
 
-  if (overlapping) {
-    return res.status(409).json({ message: 'Ese horario ya no está disponible, elige otro' });
+    if (startDateTime >= endDateTime) {
+      return res.status(400).json({ message: 'El horario seleccionado no es válido' });
+    }
+
+    const overlapping = await prisma.reservation.findFirst({
+      where: {
+        spaceId: String(spaceId),
+        reservationDate: new Date(date),
+        status: {
+          not: 'CANCELLED'
+        },
+        startTime: {
+          lt: endDateTime
+        }
+      }
+    });
+
+    if (overlapping) {
+      return res.status(409).json({ message: 'Ese horario ya no está disponible, elige otro' });
+    }
+
+    const newReservation = await prisma.reservation.create({
+      data: {
+        userId: String((req as any).user.id),
+        spaceId: String(spaceId),
+        reservationDate: new Date(date),
+        startTime: startDateTime,
+        status: 'PENDING'
+      }
+    });
+
+    return res.status(201).json(newReservation);
+  } catch (error) {
+    return res.status(500).json({ message: 'Error al procesar la reserva', error });
   }
+}) as RequestHandler);
 
-  const basePrice = space.pricePerHour * hours;
-  const guestFee = basePrice * GUEST_FEE_RATE;
-  const guestFeeTax = guestFee * TAX_RATE;
-  const total = basePrice + guestFee + guestFeeTax;
-
-  const hostFee = basePrice * HOST_FEE_RATE;
-  const hostFeeTax = hostFee * TAX_RATE;
-  const hostNet = basePrice - hostFee - hostFeeTax;
-
-  const newBooking = {
-    id: generateBookingId(),
-    spaceId,
-    spaceName: space.name,
-    guestId: (req as any).user.id,
-    guestName: (req as any).user.email,
-    hostId: space.ownerId,
-    date,
-    startTime,
-    endTime,
-    basePrice,
-    guestFee,
-    guestFeeTax,
-    total,
-    hostNet,
-    status: 'pendiente',
-    responseDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-  };
-
-  bookings.push(newBooking);
-  return res.status(201).json(newBooking);
-});
-
-// Devuelve las reservas que ha hecho el usuario actual, como WSpacer
-router.get('/mine', authMiddleware as any, (req: express.Request, res: express.Response) => {
-  const myBookings = bookings.filter((b: any) => b.guestId === (req as any).user.id);
-  res.json(myBookings);
-});
-
-// Devuelve las reservas que ha recibido el usuario actual
-router.get('/host', authMiddleware as any, (req: express.Request, res: express.Response) => {
-  const hostBookings = bookings.filter((b: any) => b.hostId === (req as any).user.id);
-  res.json(hostBookings);
-});
-
-// El anfitrión usa esta ruta para aprobar o rechazar una solicitud
-router.patch('/:id/respond', authMiddleware as any, (req: express.Request, res: express.Response): any => {
-  const booking: any = bookings.find((b: any) => b.id === req.params.id);
-  if (!booking) return res.status(404).json({ message: 'Reserva no encontrada' });
-
-  if (booking.hostId !== (req as any).user.id) {
-    return res.status(403).json({ message: 'No tienes permiso sobre esta reserva' });
+router.get('/mine', authMiddleware as any, (async (req: Request, res: Response) => {
+  try {
+    const myBookings = await prisma.reservation.findMany({
+      where: { userId: String((req as any).user.id) },
+      include: { space: true }
+    });
+    return res.json(myBookings);
+  } catch (error) {
+    return res.status(500).json({ message: 'Error al obtener tus reservas', error });
   }
+}) as RequestHandler);
 
+router.get('/host', authMiddleware as any, (async (req: Request, res: Response) => {
+  try {
+    const hostBookings = await prisma.reservation.findMany({
+      where: {
+        space: {
+          ownerId: String((req as any).user.id)
+        }
+      },
+      include: { space: true }
+    });
+    return res.json(hostBookings);
+  } catch (error) {
+    return res.status(500).json({ message: 'Error al obtener las reservas recibidas', error });
+  }
+}) as RequestHandler);
+
+router.patch('/:id/respond', authMiddleware as any, (async (req: Request, res: Response) => {
   const { status } = req.body;
-  if (!['confirmada', 'rechazada'].includes(status)) {
+
+  if (!['CONFIRMED', 'CANCELLED'].includes(status)) {
     return res.status(400).json({ message: 'Estado no válido' });
   }
 
-  booking.status = status;
-  return res.json(booking);
-});
+  try {
+    const booking = await prisma.reservation.findUnique({
+      where: { id: String(req.params.id) },
+      include: { space: true }
+    });
 
-// Ruta para cancelar una reserva hecha por el propio usuario
-router.patch('/:id/cancel', authMiddleware as any, (req: express.Request, res: express.Response): any => {
-  const booking: any = bookings.find((b: any) => b.id === req.params.id);
-  if (!booking) return res.status(404).json({ message: 'Reserva no encontrada' });
+    if (!booking) {
+      return res.status(404).json({ message: 'Reserva no encontrada' });
+    }
 
-  if (booking.guestId !== (req as any).user.id) {
-    return res.status(403).json({ message: 'No tienes permiso para cancelar esta reserva' });
+    if (booking.space.ownerId !== String((req as any).user.id)) {
+      return res.status(403).json({ message: 'No tienes permiso sobre esta reserva' });
+    }
+
+    const updatedBooking = await prisma.reservation.update({
+      where: { id: String(req.params.id) },
+      data: { status: status as any }
+    });
+
+    return res.json(updatedBooking);
+  } catch (error) {
+    return res.status(500).json({ message: 'Error al responder a la reserva', error });
   }
+}) as RequestHandler);
 
-  booking.status = 'cancelada';
-  return res.json(booking);
-});
+router.patch('/:id/cancel', authMiddleware as any, (async (req: Request, res: Response) => {
+  try {
+    const booking = await prisma.reservation.findUnique({
+      where: { id: String(req.params.id) }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ message: 'Reserva no encontrada' });
+    }
+
+    if (booking.userId !== String((req as any).user.id)) {
+      return res.status(403).json({ message: 'No tienes permiso para cancelar esta reserva' });
+    }
+
+    const cancelledBooking = await prisma.reservation.update({
+      where: { id: String(req.params.id) },
+      data: { status: 'CANCELLED' }
+    });
+
+    return res.json(cancelledBooking);
+  } catch (error) {
+    return res.status(500).json({ message: 'Error al cancelar la reserva', error });
+  }
+}) as RequestHandler);
 
 export default router;

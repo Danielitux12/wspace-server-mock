@@ -9,11 +9,11 @@ datasource db {
 model User {
   id               String        @id @default(uuid())
   name             String
-  lastName         String        // Agregado para cumplir con tu registro cifrado
+  lastName         String        
   email            String        @unique
-  phone            String        // Agregado para cumplir con tu registro cifrado
-  passwordHash     String        // Renombrado para que coincida con bcryptjs
-  role             String        @default("USER") // Cambiado de enum a String para SQLite
+  phone            String        
+  passwordHash     String        
+  role             String        @default("USER") 
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
   spaces           Space[]       @relation("OwnerSpaces")
@@ -25,15 +25,15 @@ model User {
 model Space {
   id           String        @id @default(uuid())
   name         String
-  type         String        // 👈 Agregado
+  type         String        
   description  String
   city         String
-  neighborhood String        // 👈 Agregado (mapeado desde tu frontend)
-  address      String        // Mantener para compatibilidad
+  neighborhood String        
+  address      String        
   pricePerHour Float         
   capacity     Int
-  photos       String[]      // 👈 Agregado como array nativo de PostgreSQL
-  amenities    String[]      // 👈 Agregado como array nativo de PostgreSQL
+  photos       String[]      
+  amenities    String[]      
   ownerId      String
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -49,7 +49,9 @@ model Reservation {
   spaceId         String
   reservationDate DateTime
   startTime       DateTime
-  status          String   @default("PENDING") // Cambiado de enum a String para SQLite
+  status          String   @default("PENDING") 
   user            User     @relation("UserReservations", fields: [userId], references: [id])
   space           Space    @relation("SpaceReservations", fields: [spaceId], references: [id])
+
+  @@map("reservations")
 }

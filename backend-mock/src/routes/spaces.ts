@@ -1,21 +1,12 @@
-/*
-  ARCHIVO: src/routes/spaces.ts
-
-  ¿Qué hace este archivo?
-  Responde a todo lo relacionado con espacios: buscarlos, ver el detalle
-  de uno, publicar uno nuevo, y ver los espacios de un usuario en específico.
-*/
-
-import express, { Request, Response, RequestHandler } from 'express';
-import prisma from '../config/db.ts'; // Conexión a tu PostgreSQL en Docker
+import express from 'express';
+import type { Request, Response, RequestHandler } from 'express';
+import prisma from '../config/db.ts';
 import { authMiddleware } from '../middleware/authMiddleware.ts';
 
 const router = express.Router();
 
-// Busca espacios, opcionalmente filtrados por ciudad y/o tipo
 router.get('/', (async (req: Request, res: Response) => {
   const { city, type } = req.query;
-
   const whereClause: any = {};
 
   if (city) {
@@ -40,12 +31,11 @@ router.get('/', (async (req: Request, res: Response) => {
   }
 }) as RequestHandler);
 
-// Devuelve los espacios que le pertenecen al usuario con sesión iniciada
 router.get('/mine', authMiddleware as any, (async (req: Request, res: Response) => {
   try {
     const mySpaces = await prisma.space.findMany({
       where: {
-        ownerId: (req as any).user.id
+        ownerId: String((req as any).user.id)
       }
     });
     return res.json(mySpaces);
@@ -54,12 +44,10 @@ router.get('/mine', authMiddleware as any, (async (req: Request, res: Response) 
   }
 }) as RequestHandler);
 
-// Devuelve los datos completos de un espacio, buscándolo por su id
 router.get('/:id', (async (req: Request, res: Response) => {
   try {
-    // Usamos (prisma.space as any) para saltar el bloqueo de lectura del editor
-    const space = await (prisma.space as any).findUnique({
-      where: { id: req.params.id }
+    const space = await prisma.space.findUnique({
+      where: { id: String(req.params.id) }
     });
 
     if (!space) {
@@ -72,7 +60,6 @@ router.get('/:id', (async (req: Request, res: Response) => {
   }
 }) as RequestHandler);
 
-// Crea un espacio nuevo y actualiza el rol del usuario de forma atómica
 router.post('/', authMiddleware as any, (async (req: Request, res: Response) => {
   const { name, type, city, neighborhood, capacity, pricePerHour, photos, amenities, description } = req.body;
 
@@ -83,11 +70,8 @@ router.post('/', authMiddleware as any, (async (req: Request, res: Response) => 
   const userId = (req as any).user.id;
 
   try {
-    // Usamos la transacción de Prisma para asegurar que el espacio se cree y el usuario suba de rango de forma segura
     const result = await prisma.$transaction(async (tx) => {
-      
-      // Creamos el espacio físico forzando el tipado exacto para que calce con tu esquema
-      const newSpace = await (tx.space as any).create({
+      const newSpace = await tx.space.create({
         data: {
           ownerId: String(userId),
           name: String(name),
@@ -103,12 +87,11 @@ router.post('/', authMiddleware as any, (async (req: Request, res: Response) => 
         }
       });
 
-      // Buscamos al usuario dueño y actualizamos su rol a wspacer_plus si no lo tiene
       const user = await tx.user.findUnique({ where: { id: userId } });
-      if (user && user.role !== 'wspacer_plus') {
+      if (user && String(user.role) !== 'ADMIN') {
         await tx.user.update({
           where: { id: userId },
-          data: { role: 'wspacer_plus' }
+          data: { role: 'ADMIN' }
         });
       }
 
