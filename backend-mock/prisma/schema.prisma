@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id               String        @id @default(uuid())
+  name             String
+  lastName         String        // Agregado para cumplir con tu registro cifrado
+  email            String        @unique
+  phone            String        // Agregado para cumplir con tu registro cifrado
+  passwordHash     String        // Renombrado para que coincida con bcryptjs
+  role             String        @default("USER") // Cambiado de enum a String para SQLite
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  spaces           Space[]       @relation("OwnerSpaces")
+  reservations     Reservation[] @relation("UserReservations")
+
+  @@map("users")
+}
+
+model Space {
+  id           String        @id @default(uuid())
+  name         String
+  description  String
+  city         String
+  address      String
+  pricePerHour Float         // Cambiado de Decimal a Float para compatibilidad con SQLite
+  capacity     Int
+  ownerId      String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  owner        User          @relation("OwnerSpaces", fields: [ownerId], references: [id])
+  reservations Reservation[] @relation("SpaceReservations")
+
+  @@map("spaces")
+}
+
+model Reservation {
+  id              String   @id @default(uuid())
+  userId          String
+  spaceId         String
+  reservationDate DateTime
+  startTime       DateTime
+  status          String   @default("PENDING") // Cambiado de enum a String para SQLite
+  user            User     @relation("UserReservations", fields: [userId], references: [id])
+  space           Space    @relation("SpaceReservations", fields: [spaceId], references: [id])
+}
