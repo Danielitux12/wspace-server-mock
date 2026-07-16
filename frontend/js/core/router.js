@@ -59,7 +59,13 @@ function matchRoute(pathname) {
 
 // Dibuja en pantalla la vista que corresponde a la direccion actual del navegador
 async function renderCurrentRoute() {
-  const pathname = window.location.pathname;
+  // Si alguien abre la pagina como ".../index.html" en vez de solo "/"
+  // (pasa seguido con Live Server), lo tratamos exactamente igual que "/"
+  let pathname = window.location.pathname;
+  if (pathname.endsWith('/index.html')) {
+    pathname = pathname.replace('/index.html', '/');
+  }
+
   const matched = matchRoute(pathname);
 
   const appContainer = document.getElementById('app-view');

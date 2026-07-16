@@ -17,16 +17,16 @@ async function renderHomeView(container) {
     </section>
 
     <div class="container">
+      <section class="section">
+        <h2 class="section-title" data-i18n="home.categoriesTitle">Explora por categoría</h2>
+        <div class="categories-grid" id="categories-grid"></div>
+      </section>
+
       <div class="promo-carousel" id="promo-carousel">
        <img alt="Promoción 1" class="promo-slide active" data-slide="1">
        <img alt="Promoción 2" class="promo-slide" data-slide="2">
        <img alt="Promoción 3" class="promo-slide" data-slide="3">
       </div>
-
-      <section class="section">
-        <h2 class="section-title" data-i18n="home.categoriesTitle">Explora por categoría</h2>
-        <div class="categories-grid" id="categories-grid"></div>
-      </section>
 
       <section class="section">
         <h2 class="section-title" data-i18n="home.featuredTitle">Espacios destacados</h2>
